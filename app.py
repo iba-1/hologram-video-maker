@@ -1,11 +1,15 @@
 import os
 import numpy as np
-import cv2
+import cv2 as cv
 import subprocess as sp
 import shutil
+import imutils
+import time
 from flask import Flask, render_template, request, send_from_directory
+from imutils.video import FileVideoStream
+from imutils.video import FPS
 
-UPLOAD_FOLDER = 'uploads/'
+UPLOAD_FOLDER = 'upload'
 ALLOWED_EXTENSIONS = set(['png','webm', 'mkv', 'flv', 'vob', 'ogv', 'ogg', 'drc', 'gif', 'gifv', 'mng', 'avi', 'mov', 'qt', 'wmv', 'rm', 'rmvb', 'asf', 'mp4', 'm4p', 'm4v', 'mpg', 'mp2', 'mpeg', 'mpe', 'mpv', 'm2v', 'm4v', 'svi', '3gp', '3g2', 'mxf', 'roq', 'nsv', 'flv', 'f4v', 'f4p', 'f4a', 'f4b', 'yuv']) # https://en.wikipedia.org/wiki/Video_file_format
 
 # Initialize the Flask application
@@ -15,12 +19,19 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024 # File size limit = 100M
 
 def hologram(infile, outfile, screen_below_pyramid=False):
     '''Transform infile video to a hologram video with no audio track and save to outfile'''
-    capture = cv2.cv.CaptureFromFile(infile)
-    # nbFrames = int(cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FRAME_COUNT))
-    width = int(cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FRAME_WIDTH))
-    height = int(cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))
-    fps = cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FPS)
-    # duration = (nbFrames / float(fps))
+    capture = cv.VideoCapture(infile)
+    print("[INFO] starting video file thread...")
+    fvs = FileVideoStream(infile).start()
+    print(capture)
+    # print capture.get(cv.CAP_PROP_FPS)
+    width = capture.get(cv.CAP_PROP_FRAME_WIDTH)
+    height = capture.get(cv.CAP_PROP_FRAME_HEIGHT)
+    fps = capture.get(cv.CAP_PROP_FPS)
+    # # nbFrames = int(cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FRAME_COUNT))
+    # width = int(cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FRAME_WIDTH))
+    # height = int(cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))
+    # fps = cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FPS)
+    # # duration = (nbFrames / float(fps))
 
     length = request.form['length']
     d = request.form['d']
@@ -31,7 +42,7 @@ def hologram(infile, outfile, screen_below_pyramid=False):
     length, d, padding = map(int, [length, d, padding])
     if length % 2:
         length += 1 # Keep length even for convenience
-    cap = cv2.VideoCapture(infile)
+    cap = cv.VideoCapture(infile)
     bgd = np.zeros((length, length, 3), np.uint8) # Create a black background
     new_wid = 2 * d - 2 * padding
     new_hgt = int(float(new_wid) / width * height)
@@ -43,28 +54,55 @@ def hologram(infile, outfile, screen_below_pyramid=False):
     if new_hgt % 2:
         new_hgt -= 1
 
-    fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v')
-    out = cv2.VideoWriter(outfile, fourcc, fps, (length,length))
+    fourcc = cv.VideoWriter_fourcc('m', 'p', '4', 'v')
+    out = cv.VideoWriter(outfile, fourcc, fps, (length,length))
 
-    while(1):
-        ret, frame = cap.read()
-        if not ret:
+    # start the FPS timer
+    fps = FPS().start()
+
+    while fvs.more():
+        frame = fvs.read()
+        if np.shape(frame) == ():
             break
-        resized_frame = cv2.resize(frame, (new_wid, new_hgt))
+        resized_frame = cv.resize(frame, (new_wid, new_hgt))
         if screen_below_pyramid:
-            resized_frame = cv2.flip(resized_frame, 0)
+            resized_frame = cv.flip(resized_frame, 0)
         bgd[length/2 + d + padding:length/2 + d + new_hgt + padding, length/2 - new_wid/2:length/2 + new_wid/2] =\
             resized_frame
         bgd[length/2 - d - padding - new_hgt:length/2 - d - padding, length/2 - new_wid/2:length/2 + new_wid/2] =\
-            cv2.flip(resized_frame, -1)
+            cv.flip(resized_frame, -1)
         bgd[length/2 - new_wid/2:length/2 + new_wid/2, length/2 + d + padding:length/2 + d + new_hgt + padding] =\
-            cv2.flip(cv2.transpose(resized_frame), 0)
+            cv.flip(cv.transpose(resized_frame), 0)
         bgd[length/2 - new_wid/2:length/2 + new_wid/2, length/2 - d - padding - new_hgt:length/2 - d - padding] =\
-            cv2.flip(cv2.transpose(resized_frame), 1)
+            cv.flip(cv.transpose(resized_frame), 1)
         out.write(bgd)
+        fps.update()
 
+    fps.stop()
+    fvs.stop()
     cap.release()
     out.release()
+
+
+    # while(1):
+    #     ret, frame = cap.read()
+    #     if not ret:
+    #         break
+    #     resized_frame = cv.resize(frame, (new_wid, new_hgt))
+    #     if screen_below_pyramid:
+    #         resized_frame = cv.flip(resized_frame, 0)
+    #     bgd[length/2 + d + padding:length/2 + d + new_hgt + padding, length/2 - new_wid/2:length/2 + new_wid/2] =\
+    #         resized_frame
+    #     bgd[length/2 - d - padding - new_hgt:length/2 - d - padding, length/2 - new_wid/2:length/2 + new_wid/2] =\
+    #         cv.flip(resized_frame, -1)
+    #     bgd[length/2 - new_wid/2:length/2 + new_wid/2, length/2 + d + padding:length/2 + d + new_hgt + padding] =\
+    #         cv.flip(cv.transpose(resized_frame), 0)
+    #     bgd[length/2 - new_wid/2:length/2 + new_wid/2, length/2 - d - padding - new_hgt:length/2 - d - padding] =\
+    #         cv.flip(cv.transpose(resized_frame), 1)
+    #     out.write(bgd)
+    #
+    # cap.release()
+    # out.release()
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -79,6 +117,8 @@ def form():
 def upload_file():
     if request.method == 'POST':
         file = request.files['file']
+        print(file)
+        print(allowed_file(file.filename))
         if file and allowed_file(file.filename):
             my_dir = os.path.abspath(os.path.dirname(__file__))
             uploadpath = os.path.join(my_dir, app.config['UPLOAD_FOLDER'])
@@ -93,7 +133,7 @@ def upload_file():
             upsidedown = 'upsidedown' in request.form
             outpath = os.path.join(uploadpath, 'video_noaudio.avi')
             hologram(filepath, outpath, screen_below_pyramid=upsidedown)
-            sp.call(['avconv', '-y', '-i', outpath, '-i', filepath, '-c', 'copy', '-map', '0:0', '-map', '1:1', os.path.join(uploadpath, 'out.mkv')]) # Add audio track
+            # sp.call(['avconv', '-y', '-i', outpath, '-i', filepath, '-c', 'copy', '-map', '0:0', '-map', '1:1', os.path.join(uploadpath, 'out.mkv')]) # Add audio track
             return send_from_directory(uploadpath, 'out.mkv', as_attachment=True)
     return form()
 
