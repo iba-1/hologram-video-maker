@@ -27,11 +27,6 @@ def hologram(infile, outfile, screen_below_pyramid=False):
     width = capture.get(cv.CAP_PROP_FRAME_WIDTH)
     height = capture.get(cv.CAP_PROP_FRAME_HEIGHT)
     fps = capture.get(cv.CAP_PROP_FPS)
-    # # nbFrames = int(cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FRAME_COUNT))
-    # width = int(cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FRAME_WIDTH))
-    # height = int(cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))
-    # fps = cv2.cv.GetCaptureProperty(capture, cv2.cv.CV_CAP_PROP_FPS)
-    # # duration = (nbFrames / float(fps))
 
     length = request.form['length']
     d = request.form['d']
@@ -84,26 +79,6 @@ def hologram(infile, outfile, screen_below_pyramid=False):
     out.release()
 
 
-    # while(1):
-    #     ret, frame = cap.read()
-    #     if not ret:
-    #         break
-    #     resized_frame = cv.resize(frame, (new_wid, new_hgt))
-    #     if screen_below_pyramid:
-    #         resized_frame = cv.flip(resized_frame, 0)
-    #     bgd[length/2 + d + padding:length/2 + d + new_hgt + padding, length/2 - new_wid/2:length/2 + new_wid/2] =\
-    #         resized_frame
-    #     bgd[length/2 - d - padding - new_hgt:length/2 - d - padding, length/2 - new_wid/2:length/2 + new_wid/2] =\
-    #         cv.flip(resized_frame, -1)
-    #     bgd[length/2 - new_wid/2:length/2 + new_wid/2, length/2 + d + padding:length/2 + d + new_hgt + padding] =\
-    #         cv.flip(cv.transpose(resized_frame), 0)
-    #     bgd[length/2 - new_wid/2:length/2 + new_wid/2, length/2 - d - padding - new_hgt:length/2 - d - padding] =\
-    #         cv.flip(cv.transpose(resized_frame), 1)
-    #     out.write(bgd)
-    #
-    # cap.release()
-    # out.release()
-
 def allowed_file(filename):
     return '.' in filename and \
            filename.split('.', 1)[-1] in ALLOWED_EXTENSIONS
@@ -127,14 +102,17 @@ def upload_file():
             except:
                 pass
             os.makedirs(uploadpath)
+            
             filename = 'original_video.' + file.filename.split('.', 1)[-1]
             filepath = os.path.join(uploadpath, filename)
             file.save(filepath)
+            
             upsidedown = 'upsidedown' in request.form
             outpath = os.path.join(uploadpath, 'video_noaudio.avi')
+            
             hologram(filepath, outpath, screen_below_pyramid=upsidedown)
-            # sp.call(['avconv', '-y', '-i', outpath, '-i', filepath, '-c', 'copy', '-map', '0:0', '-map', '1:1', os.path.join(uploadpath, 'out.mkv')]) # Add audio track
             return send_from_directory(uploadpath, 'out.mkv', as_attachment=True)
+        
     return form()
 
 # Run the app :)
